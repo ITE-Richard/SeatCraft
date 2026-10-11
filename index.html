@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SeatCraft 座位小幫手</title>
+  <link rel="stylesheet" href="src/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>SeatCraft <small>座位小幫手</small></h1>
+    <div class="actions">
+      <button id="btn-solve" class="primary">排座位</button>
+      <button id="btn-reroll">再排一次</button>
+      <button id="btn-print">列印</button>
+      <button id="btn-csv">匯出 CSV</button>
+      <button id="btn-md">匯出 Markdown</button>
+      <button id="btn-save">儲存設定</button>
+      <button id="btn-load">載入設定</button>
+      <button id="btn-help">使用說明</button>
+      <input id="file-load" type="file" accept=".json,application/json" hidden>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="panel">
+      <section>
+        <h2>1. 教室</h2>
+        <div class="row">
+          <label>列數（前到後） <input id="inp-rows" type="number" min="1" max="15" step="1"></label>
+          <label>排數（左到右） <input id="inp-cols" type="number" min="1" max="15" step="1"></label>
+        </div>
+        <label class="row"><input id="chk-edit" type="checkbox"> 編輯教室：點格子標記 X（不坐學生）</label>
+      </section>
+
+      <section>
+        <h2>2. 學生</h2>
+        <label class="row">人數 <input id="inp-n" type="number" min="1" max="99" step="1"></label>
+        <label class="stack">姓名（選填，一行一位，依號碼順序）
+          <textarea id="inp-names" rows="5" placeholder="王小明&#10;李小華&#10;…"></textarea>
+        </label>
+      </section>
+
+      <section>
+        <h2>3. 設定條件</h2>
+        <p class="hint">點選學生（可多選），再按下面的按鈕。</p>
+        <div id="chips" class="chips"></div>
+        <div class="pick-bar">
+          <span id="pick-count">尚未選取</span>
+          <button id="btn-group" class="primary">不能坐在一起</button>
+          <span class="pick-zone">
+            指定坐：
+            <button data-zone="front">第一列</button>
+            <button data-zone="back">最後一列</button>
+            <button data-zone="left">最左排</button>
+            <button data-zone="right">最右排</button>
+            <button data-zone="">不限</button>
+          </span>
+          <span class="pick-zone pick-height">
+            身高：
+            <button data-height="tall">偏高</button>
+            <button data-height="short">偏矮</button>
+            <button data-height="">普通</button>
+          </span>
+          <button id="btn-clear-pick">取消選取</button>
+        </div>
+        <details class="paste">
+          <summary>或貼上文字條件</summary>
+          <textarea id="inp-rules" rows="6" placeholder="15號, 14號不能一起坐&#10;1, 11, 6, 13 這一群不能坐一起&#10;24坐第一列&#10;20坐最後一列&#10;3, 7, 12 比較高&#10;5, 9 比較矮"></textarea>
+          <button id="btn-parse">解析並加入</button>
+          <ul id="parse-result" class="parse-result"></ul>
+        </details>
+      </section>
+
+      <section>
+        <h2>4. 目前的條件</h2>
+        <h3>不能坐在一起（組內任兩人不相鄰，含斜對角）</h3>
+        <ul id="group-list" class="cond-list"></ul>
+        <h3>指定位置</h3>
+        <ul id="zone-list" class="cond-list"></ul>
+        <h3>身高印象（盡量做到：偏高坐後半部、不擋偏矮）</h3>
+        <ul id="height-list" class="cond-list"></ul>
+      </section>
+
+      <button id="btn-reset">清除所有設定</button>
+
+
+    </aside>
+
+    <section class="board">
+      <div id="status" class="status" hidden></div>
+      <div id="print-title" class="print-title">座位表</div>
+      <div class="desk">講桌</div>
+      <div id="grid" class="grid"></div>
+      <p class="hint" id="grid-hint"></p>
+      <div id="height-report" class="height-report" hidden></div>
+      <ul id="issue-list" class="issue-list"></ul>
+    </section>
+  </main>
+
+  <dialog id="help" class="help">
+    <div class="help-head">
+      <h2>使用說明</h2>
+      <button id="btn-help-close">關閉</button>
+    </div>
+    <div class="help-body">
+      <h3>基本流程</h3>
+      <ol>
+        <li><b>設定教室</b>：輸入列數（前到後）和排數（左到右）。</li>
+        <li><b>標記不坐的位置</b>：勾選「編輯教室」，點格子變成 <b>X</b>（不坐學生），再點一次取消。完成後取消勾選。</li>
+        <li><b>輸入學生</b>：填人數；姓名可不填，要填就一行一位，依號碼順序。</li>
+        <li><b>設定條件</b>：見下方。</li>
+        <li><b>按「排座位」</b>。不滿意就按「再排一次」，會換一種排法。</li>
+      </ol>
+
+      <h3>設定條件的兩種方式</h3>
+      <p><b>方式一：點選學生</b>。點幾位學生的號碼（可多選，再點一次取消），然後按：</p>
+      <ul>
+        <li>「不能坐在一起」：這幾位任兩人都不會坐在一起。兩個人或一群人都可以。</li>
+        <li>「指定坐：第一列／最後一列／最左排／最右排」：選到的學生都只能坐在那一區。「不限」可取消指定。</li>
+        <li>「身高：偏高／偏矮」：標記印象中比較高或比較矮的學生；「普通」可取消。沒標的都算普通。</li>
+      </ul>
+      <p><b>方式二：貼上文字</b>。展開「或貼上文字條件」，一行寫一個條件，按「解析並加入」。例如：</p>
+      <pre>15號, 14號不能一起坐
+1, 11, 6, 13, 21 這一群是愛講話的同學, 不能坐一起
+24坐第一列
+20坐最後一列（也可寫「第七列」，代表教室的最後一列）
+8坐最右排
+9坐最左排
+3, 7, 12 比較高
+5, 9 比較矮</pre>
+      <p>每一行的解析結果會列在下面；看不懂的行會用紅字說明原因。行首的「1.」「2.」編號會自動忽略。</p>
+      <p>已設定的條件都列在「目前的條件」，可以逐項刪除。學生號碼上也會標示他的條件（例如「組8」「第一列」）。</p>
+
+      <h3>規則怎麼算</h3>
+      <ul>
+        <li><b>「列」是橫的（前後），「排」是直的（左右）</b>。左右以學生面向講桌為準，也就是畫面上的左右。</li>
+        <li><b>不能坐在一起</b>：前、後、左、右、斜對角共 8 個位置都不行。</li>
+        <li><b>第一列／最後一列／最左排／最右排</b>：指教室最外圈「有座位」的那一列或那一排。例如最後一列全部標 X，最後一列就變成倒數第二列。</li>
+        <li>每位學生最多指定一個區域。</li>
+        <li><b>人數比座位少時</b>：空位會盡量留在後面。</li>
+        <li><b>座位編號</b>（Seat 01、02…）由前到後、由左到右自動編號，X 不編號；它只是位置的代號，和學生號碼無關。</li>
+      </ul>
+
+      <h3>身高怎麼排</h3>
+      <p>不用知道確切身高，只要標出印象中「偏高」或「偏矮」的學生。身高是<b>盡量做到</b>的條件，「不能坐在一起」和「指定位置」一定優先。排的時候依序考慮：</p>
+      <ol>
+        <li><b>偏高的坐後半部</b>：有座位的列數取一半，中間那列算後半部（7 列的教室就是第 4～7 列）。</li>
+        <li><b>偏高的盡量不要坐在偏矮的前面</b>：同一直排，正後方 1～2 個座位。</li>
+        <li>其次才是空位留在後面，以及偏高擋到普通、普通擋到偏矮的情況。</li>
+      </ol>
+      <p>排好後，座位表下方會列出沒照顧到的地方，例如某位偏高的學生因為被指定坐第一列而沒辦法坐後面。座位上也會標示「高」「矮」，方便你手動微調。</p>
+
+      <h3>排好之後</h3>
+      <ul>
+        <li><b>手動調整</b>：點一個座位，再點另一個座位，兩人就會互換；點空位就是移過去。</li>
+        <li>調整後如果違反條件，座位會出現<b>紅框</b>，下方列出原因，但不會阻止你這樣排。</li>
+        <li><b>列印</b>：只印出座位表。<b>匯出 CSV</b> 可用 Excel 開啟；<b>匯出 Markdown</b> 為文字表格。</li>
+      </ul>
+
+      <h3>排不出來時</h3>
+      <ul>
+        <li>如果條件一定排不出來，畫面會直接說明是哪一條，例如「指定坐最左排的有 6 人，但最左排只有 5 個座位」。</li>
+        <li>如果顯示「在搜尋上限內沒找到排法」，先多按幾次「再排一次」；還是不行，就減少「不能坐在一起」的人數或指定位置的人數。</li>
+        <li>參考：同一群「不能坐在一起」的人越多越難排。7 列 × 7 排的教室，最多大約只能放 14 位互不相鄰的學生。</li>
+      </ul>
+
+      <h3>存檔與換電腦</h3>
+      <ul>
+        <li>不需要網路，所有計算都在這台電腦上完成，資料不會傳出去。</li>
+        <li>設定會自動暫存在這台電腦的瀏覽器裡，下次打開還在。</li>
+        <li><b>換電腦</b>：先按「儲存設定」存成 .json 檔；在另一台電腦按「載入設定」選這個檔案。</li>
+        <li>複製程式到別台電腦時，要複製<b>整個資料夾</b>（至少要有 index.html 和 src 資料夾），只複製 index.html 無法使用。</li>
+        <li>「清除所有設定」會清掉教室、學生、條件和座位表，無法復原，建議先儲存設定。</li>
+      </ul>
+    </div>
+  </dialog>
+
+  <script src="src/classroom.js"></script>
+  <script src="src/validator.js"></script>
+  <script src="src/solver.js"></script>
+  <script src="src/rules.js"></script>
+  <script src="src/height.js"></script>
+  <script src="src/ui.js"></script>
+</body>
+</html>
